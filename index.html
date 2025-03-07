@@ -35,6 +35,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
         
         button {
@@ -77,6 +78,11 @@
             padding: 8px;
             width: 100px;
         }
+
+        select {
+            padding: 8px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -84,10 +90,12 @@
     
     <div class="container">
         <div class="steps">
-            <h2>1. Capturar Imagem</h2>
+            <h2>1. Escolher Imagem</h2>
             <div class="controls">
                 <button id="startCamera">Iniciar Câmera</button>
                 <button id="capturePhoto" disabled>Capturar Foto</button>
+                <input type="file" id="uploadPhoto" accept="image/*" style="display: none;">
+                <button id="loadGallery">Carregar da Galeria</button>
             </div>
             
             <div class="camera-container">
@@ -113,8 +121,13 @@
             <div class="measurement-container">
                 <p>Clique em dois pontos para medir a distância</p>
                 <div class="controls">
-                    <label for="referenceInput">Referência (cm):</label>
+                    <label for="referenceInput">Referência:</label>
                     <input type="number" id="referenceInput" placeholder="Ex: 10">
+                    <select id="unitSelect">
+                        <option value="cm">cm</option>
+                        <option value="m">m</option>
+                        <option value="in">polegadas</option>
+                    </select>
                     <button id="setReference">Definir Referência</button>
                 </div>
                 <div class="controls">
@@ -139,270 +152,12 @@
         const setReferenceBtn = document.getElementById('setReference');
         const clearMeasurementsBtn = document.getElementById('clearMeasurements');
         const saveDrawingBtn = document.getElementById('saveDrawing');
+        const loadGalleryBtn = document.getElementById('loadGallery');
+        const uploadPhoto = document.getElementById('uploadPhoto');
+        const unitSelect = document.getElementById('unitSelect');
         
         // Contextos Canvas
         const photoCtx = photoCanvas.getContext('2d');
         const ctx = canvas.getContext('2d');
         
-        // Estado da aplicação
-        let stream = null;
-        let selectedPoints = [];
-        let measurements = [];
-        let referenceLength = 0;
-        let referencePixels = 0;
-        let scale = 1;
-        
-        // Iniciar a câmera
-        startCameraBtn.addEventListener('click', async () => {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
-                });
-                video.srcObject = stream;
-                capturePhotoBtn.disabled = false;
-            } catch (err) {
-                console.error('Erro ao acessar a câmera: ', err);
-                alert('Não foi possível acessar a câmera. Verifique as permissões.');
-            }
-        });
-        
-        // Capturar foto
-        capturePhotoBtn.addEventListener('click', () => {
-            // Definir dimensões do canvas baseado no tamanho do vídeo
-            photoCanvas.width = video.videoWidth;
-            photoCanvas.height = video.videoHeight;
-            
-            // Desenhar o frame atual no canvas
-            photoCtx.drawImage(video, 0, 0, photoCanvas.width, photoCanvas.height);
-            
-            // Mostrar o canvas e ocultar o vídeo
-            photoCanvas.style.display = 'block';
-            video.style.display = 'none';
-            
-            // Parar o streaming de vídeo
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            
-            // Habilitar o botão de processamento
-            processImageBtn.disabled = false;
-        });
-        
-        // Processar a imagem e criar desenho
-        processImageBtn.addEventListener('click', () => {
-            // Configurar o canvas de desenho
-            canvas.width = photoCanvas.width;
-            canvas.height = photoCanvas.height;
-            
-            // Obter a imagem do canvas da foto
-            const imageData = photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height);
-            
-            // Processar a imagem para criar um desenho
-            const processedImageData = processToDrawing(imageData);
-            
-            // Mostrar o resultado no canvas
-            ctx.putImageData(processedImageData, 0, 0);
-            
-            // Habilitar a captura de cliques para medição
-            canvas.addEventListener('click', handleCanvasClick);
-        });
-        
-        // Função para processar a imagem e transformar em desenho
-        function processToDrawing(imageData) {
-            const data = imageData.data;
-            const width = imageData.width;
-            const height = imageData.height;
-            
-            // Criar uma cópia da imagem
-            const processedData = new Uint8ClampedArray(data);
-            
-            // Aplicar detecção de bordas e conversão para desenho
-            for (let y = 1; y < height - 1; y++) {
-                for (let x = 1; x < width - 1; x++) {
-                    const idx = (y * width + x) * 4;
-                    
-                    // Calcular índices dos pixels vizinhos
-                    const top = ((y - 1) * width + x) * 4;
-                    const bottom = ((y + 1) * width + x) * 4;
-                    const left = (y * width + (x - 1)) * 4;
-                    const right = (y * width + (x + 1)) * 4;
-                    
-                    // Converter para escala de cinza
-                    const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                    
-                    // Detecção simples de borda (Sobel simplificado)
-                    const gx = data[right] - data[left];
-                    const gy = data[bottom] - data[top];
-                    
-                    // Magnitude do gradiente
-                    const g = Math.sqrt(gx * gx + gy * gy);
-                    
-                    // Aplicar threshold para determinar se é uma borda
-                    if (g > 30) {
-                        // Borda - desenhar em preto
-                        processedData[idx] = 0;
-                        processedData[idx + 1] = 0;
-                        processedData[idx + 2] = 0;
-                    } else {
-                        // Não é borda - desenhar em branco
-                        processedData[idx] = 255;
-                        processedData[idx + 1] = 255;
-                        processedData[idx + 2] = 255;
-                    }
-                    processedData[idx + 3] = 255; // Alpha
-                }
-            }
-            
-            return new ImageData(processedData, width, height);
-        }
-        
-        // Lidar com cliques no canvas para medição
-        function handleCanvasClick(e) {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            // Criar um ponto onde o usuário clicou
-            createPoint(x, y);
-            
-            // Adicionar às coordenadas selecionadas
-            selectedPoints.push({ x, y });
-            
-            // Se temos dois pontos, criar uma medição
-            if (selectedPoints.length === 2) {
-                createMeasurement(selectedPoints[0], selectedPoints[1]);
-                selectedPoints = [];
-            }
-        }
-        
-        // Criar um elemento visual para o ponto
-        function createPoint(x, y) {
-            const point = document.createElement('div');
-            point.className = 'point';
-            point.style.left = `${x}px`;
-            point.style.top = `${y}px`;
-            pointsContainer.appendChild(point);
-        }
-        
-        // Criar uma medição entre dois pontos
-        function createMeasurement(point1, point2) {
-            // Calcular a distância em pixels
-            const dx = point2.x - point1.x;
-            const dy = point2.y - point1.y;
-            const pixelDistance = Math.sqrt(dx * dx + dy * dy);
-            
-            // Calcular a medida real se tivermos uma referência
-            let realDistance = pixelDistance;
-            if (referencePixels > 0 && referenceLength > 0) {
-                scale = referenceLength / referencePixels;
-                realDistance = pixelDistance * scale;
-            }
-            
-            // Criar o elemento de medição
-            const measurement = document.createElement('div');
-            measurement.className = 'measurement';
-            
-            // Posicionar no meio dos dois pontos
-            measurement.style.left = `${(point1.x + point2.x) / 2}px`;
-            measurement.style.top = `${(point1.y + point2.y) / 2}px`;
-            
-            // Mostrar a medida
-            measurement.textContent = referencePixels > 0 
-                ? `${realDistance.toFixed(1)} cm` 
-                : `${pixelDistance.toFixed(1)} px`;
-            
-            pointsContainer.appendChild(measurement);
-            
-            // Desenhar uma linha entre os pontos
-            ctx.beginPath();
-            ctx.moveTo(point1.x, point1.y);
-            ctx.lineTo(point2.x, point2.y);
-            ctx.strokeStyle = 'red';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            // Guardar a medição
-            measurements.push({
-                point1,
-                point2,
-                pixelDistance,
-                realDistance: referencePixels > 0 ? realDistance : null
-            });
-        }
-        
-        // Definir a referência de medida
-        setReferenceBtn.addEventListener('click', () => {
-            const referenceValue = parseFloat(document.getElementById('referenceInput').value);
-            
-            if (isNaN(referenceValue) || referenceValue <= 0) {
-                alert('Digite um valor válido maior que zero');
-                return;
-            }
-            
-            if (selectedPoints.length !== 2) {
-                alert('Selecione dois pontos para definir a referência');
-                return;
-            }
-            
-            // Calcular a distância em pixels entre os pontos de referência
-            const dx = selectedPoints[1].x - selectedPoints[0].x;
-            const dy = selectedPoints[1].y - selectedPoints[0].y;
-            referencePixels = Math.sqrt(dx * dx + dy * dy);
-            referenceLength = referenceValue;
-            
-            // Calcular escala
-            scale = referenceLength / referencePixels;
-            
-            // Criar a medição de referência
-            createMeasurement(selectedPoints[0], selectedPoints[1]);
-            selectedPoints = [];
-            
-            // Atualizar todas as medições existentes
-            updateAllMeasurements();
-            
-            alert(`Referência definida: ${referenceValue} cm = ${referencePixels.toFixed(1)} pixels`);
-        });
-        
-        // Atualizar todas as medições com a nova escala
-        function updateAllMeasurements() {
-            // Atualizar os elementos DOM de medição
-            const measurementElements = document.querySelectorAll('.measurement');
-            measurementElements.forEach((element, index) => {
-                if (index < measurements.length) {
-                    const meas = measurements[index];
-                    meas.realDistance = meas.pixelDistance * scale;
-                    element.textContent = `${meas.realDistance.toFixed(1)} cm`;
-                }
-            });
-        }
-        
-        // Limpar todas as medições
-        clearMeasurementsBtn.addEventListener('click', () => {
-            // Limpar os pontos e medições visuais
-            pointsContainer.innerHTML = '';
-            
-            // Limpar as listas de pontos e medições
-            selectedPoints = [];
-            measurements = [];
-            
-            // Redesenhar a imagem sem as linhas de medição
-            ctx.putImageData(photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height), 0, 0);
-            const processedImageData = processToDrawing(photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height));
-            ctx.putImageData(processedImageData, 0, 0);
-        });
-        
-        // Salvar o desenho com as medições
-        saveDrawingBtn.addEventListener('click', () => {
-            // Criar um link temporário
-            const link = document.createElement('a');
-            link.download = 'desenho-com-medidas.png';
-            
-            // Converter o canvas para uma URL de dados
-            link.href = canvas.toDataURL('image/png');
-            
-            // Clicar no link para iniciar o download
-            link.click();
-        });
-    </script>
-</body>
-</html>
+        // Estado
