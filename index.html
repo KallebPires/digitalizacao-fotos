@@ -3,19 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Medição de Objetos</title>
+    <title>Medições Industriais</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
+            background-color: #f5f5f5;
         }
         
         .container {
             display: flex;
             flex-direction: column;
             gap: 20px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .camera-container, .canvas-container {
@@ -23,6 +28,7 @@
             border: 1px solid #ccc;
             border-radius: 5px;
             overflow: hidden;
+            position: relative;
         }
         
         #video, #photo, #canvas {
@@ -33,22 +39,29 @@
         
         .controls {
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             margin-bottom: 20px;
         }
         
         button {
             padding: 10px 15px;
-            background-color: #4CAF50;
+            background-color: #006699;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
+            transition: background-color 0.3s;
         }
         
         button:hover {
-            background-color: #45a049;
+            background-color: #004d73;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
         }
         
         .measurement-container {
@@ -63,31 +76,132 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
             cursor: pointer;
+            z-index: 10;
         }
         
         .measurement {
             position: absolute;
-            background-color: rgba(255, 255, 255, 0.7);
-            padding: 2px 5px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 3px 6px;
             border-radius: 3px;
             font-size: 12px;
+            border: 1px solid #ddd;
+            z-index: 11;
+        }
+        
+        input, select {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
         }
         
         #referenceInput {
-            padding: 8px;
             width: 100px;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .file-label {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+        
+        .file-label:hover {
+            background-color: #45a049;
+        }
+        
+        .tab-controls {
+            display: flex;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .tab-btn {
+            padding: 10px 20px;
+            background-color: #f1f1f1;
+            border: none;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        
+        .tab-btn.active {
+            background-color: #006699;
+            color: white;
+        }
+        
+        .camera-options {
+            margin-bottom: 10px;
+        }
+        
+        .settings-panel {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        
+        .settings-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .settings-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .settings-row label {
+            width: 150px;
+        }
+        
+        .line {
+            position: absolute;
+            z-index: 9;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <h1>Medição de Objetos</h1>
+    <h1>Medições Industriais</h1>
     
     <div class="container">
+        <div class="tab-controls">
+            <button class="tab-btn active" id="cameraTab">Câmera</button>
+            <button class="tab-btn" id="galleryTab">Galeria</button>
+        </div>
+        
         <div class="steps">
-            <h2>1. Capturar Imagem</h2>
-            <div class="controls">
-                <button id="startCamera">Iniciar Câmera</button>
-                <button id="capturePhoto" disabled>Capturar Foto</button>
+            <h2>1. Obter Imagem</h2>
+            
+            <div id="cameraControls">
+                <div class="camera-options">
+                    <select id="cameraSelect">
+                        <option value="">Carregando câmeras...</option>
+                    </select>
+                </div>
+                <div class="controls">
+                    <button id="startCamera">Iniciar Câmera</button>
+                    <button id="capturePhoto" disabled>Capturar Foto</button>
+                    <button id="switchCamera" disabled>Alternar Câmera</button>
+                </div>
+            </div>
+            
+            <div id="galleryControls" style="display: none;">
+                <div class="controls">
+                    <label for="imageInput" class="file-label">Escolher Imagem da Galeria</label>
+                    <input type="file" id="imageInput" class="file-input" accept="image/*">
+                </div>
             </div>
             
             <div class="camera-container">
@@ -100,10 +214,12 @@
             <h2>2. Processar Imagem</h2>
             <div class="controls">
                 <button id="processImage" disabled>Converter para Desenho</button>
+                <button id="resetImage" disabled>Usar Imagem Original</button>
             </div>
             
-            <div class="canvas-container" style="position: relative;">
+            <div class="canvas-container">
                 <canvas id="canvas"></canvas>
+                <div id="lines"></div>
                 <div id="points"></div>
             </div>
         </div>
@@ -112,11 +228,38 @@
             <h2>3. Adicionar Medidas</h2>
             <div class="measurement-container">
                 <p>Clique em dois pontos para medir a distância</p>
-                <div class="controls">
-                    <label for="referenceInput">Referência (cm):</label>
-                    <input type="number" id="referenceInput" placeholder="Ex: 10">
-                    <button id="setReference">Definir Referência</button>
+                
+                <div class="settings-panel">
+                    <div class="settings-title">Definir Referência</div>
+                    <div class="settings-row">
+                        <label for="referenceInput">Valor de referência:</label>
+                        <input type="number" id="referenceInput" placeholder="Ex: 10" min="0.001" step="0.001">
+                        <select id="referenceUnit">
+                            <option value="mm">mm</option>
+                            <option value="cm" selected>cm</option>
+                            <option value="m">m</option>
+                            <option value="pol">polegadas</option>
+                        </select>
+                    </div>
+                    <div class="controls">
+                        <button id="setReference">Definir Referência</button>
+                    </div>
                 </div>
+                
+                <div class="settings-panel">
+                    <div class="settings-title">Configurações de Exibição</div>
+                    <div class="settings-row">
+                        <label>Mostrar medidas em:</label>
+                        <div>
+                            <label><input type="checkbox" checked id="showPixels"> Pixels</label>
+                            <label><input type="checkbox" checked id="showMm"> mm</label>
+                            <label><input type="checkbox" checked id="showCm"> cm</label>
+                            <label><input type="checkbox" checked id="showM"> m</label>
+                            <label><input type="checkbox" checked id="showInch"> pol</label>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="controls">
                     <button id="clearMeasurements">Limpar Medidas</button>
                     <button id="saveDrawing">Salvar Desenho</button>
@@ -131,14 +274,36 @@
         const photoCanvas = document.getElementById('photo');
         const canvas = document.getElementById('canvas');
         const pointsContainer = document.getElementById('points');
+        const linesContainer = document.getElementById('lines');
+        const cameraSelect = document.getElementById('cameraSelect');
         
         // Botões
         const startCameraBtn = document.getElementById('startCamera');
         const capturePhotoBtn = document.getElementById('capturePhoto');
         const processImageBtn = document.getElementById('processImage');
+        const resetImageBtn = document.getElementById('resetImage');
         const setReferenceBtn = document.getElementById('setReference');
         const clearMeasurementsBtn = document.getElementById('clearMeasurements');
         const saveDrawingBtn = document.getElementById('saveDrawing');
+        const switchCameraBtn = document.getElementById('switchCamera');
+        
+        // Tabs
+        const cameraTab = document.getElementById('cameraTab');
+        const galleryTab = document.getElementById('galleryTab');
+        const cameraControls = document.getElementById('cameraControls');
+        const galleryControls = document.getElementById('galleryControls');
+        
+        // Inputs
+        const imageInput = document.getElementById('imageInput');
+        const referenceInput = document.getElementById('referenceInput');
+        const referenceUnit = document.getElementById('referenceUnit');
+        
+        // Checkboxes para unidades
+        const showPixels = document.getElementById('showPixels');
+        const showMm = document.getElementById('showMm');
+        const showCm = document.getElementById('showCm');
+        const showM = document.getElementById('showM');
+        const showInch = document.getElementById('showInch');
         
         // Contextos Canvas
         const photoCtx = photoCanvas.getContext('2d');
@@ -151,19 +316,125 @@
         let referenceLength = 0;
         let referencePixels = 0;
         let scale = 1;
+        let cameras = [];
+        let currentCameraIndex = 0;
+        let originalImageData = null;
         
-        // Iniciar a câmera
-        startCameraBtn.addEventListener('click', async () => {
+        // Conversões de unidade (relativas a mm)
+        const unitConversions = {
+            'px': 1, // Será ajustado com base na referência
+            'mm': 1,
+            'cm': 10,
+            'm': 1000,
+            'pol': 25.4 // 1 polegada = 25.4mm
+        };
+        
+        // Funções de inicialização
+        
+        // Enumerar câmeras disponíveis
+        async function enumerateCameras() {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                cameras = devices.filter(device => device.kind === 'videoinput');
+                
+                cameraSelect.innerHTML = '';
+                cameras.forEach((camera, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.text = camera.label || `Câmera ${index + 1}`;
+                    cameraSelect.appendChild(option);
                 });
+                
+                if (cameras.length > 1) {
+                    switchCameraBtn.disabled = false;
+                }
+            } catch (err) {
+                console.error('Erro ao enumerar câmeras:', err);
+                cameraSelect.innerHTML = '<option value="">Nenhuma câmera encontrada</option>';
+            }
+        }
+        
+        // Iniciar a câmera selecionada
+        async function startCamera(cameraIndex = 0) {
+            // Parar qualquer stream existente
+            stopCamera();
+            
+            try {
+                const constraints = {
+                    video: {
+                        deviceId: cameras.length > 0 ? { exact: cameras[cameraIndex].deviceId } : undefined,
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        facingMode: { ideal: 'environment' } // Tenta usar a câmera traseira
+                    }
+                };
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 capturePhotoBtn.disabled = false;
+                switchCameraBtn.disabled = cameras.length <= 1;
+                currentCameraIndex = cameraIndex;
+                
+                // Atualizar o dropdown para a câmera atual
+                cameraSelect.value = cameraIndex;
             } catch (err) {
                 console.error('Erro ao acessar a câmera: ', err);
                 alert('Não foi possível acessar a câmera. Verifique as permissões.');
             }
+        }
+        
+        // Parar câmera
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+        }
+        
+        // Alternar câmera
+        function switchCamera() {
+            if (cameras.length > 1) {
+                const nextCameraIndex = (currentCameraIndex + 1) % cameras.length;
+                startCamera(nextCameraIndex);
+            }
+        }
+        
+        // Event Listeners
+        
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            enumerateCameras();
+        });
+        
+        // Alternar entre abas
+        cameraTab.addEventListener('click', () => {
+            cameraTab.classList.add('active');
+            galleryTab.classList.remove('active');
+            cameraControls.style.display = 'block';
+            galleryControls.style.display = 'none';
+        });
+        
+        galleryTab.addEventListener('click', () => {
+            galleryTab.classList.add('active');
+            cameraTab.classList.remove('active');
+            cameraControls.style.display = 'none';
+            galleryControls.style.display = 'block';
+            stopCamera();
+        });
+        
+        // Iniciar câmera
+        startCameraBtn.addEventListener('click', () => {
+            const selectedCamera = parseInt(cameraSelect.value) || 0;
+            startCamera(selectedCamera);
+        });
+        
+        // Alternar câmera
+        switchCameraBtn.addEventListener('click', switchCamera);
+        
+        // Seleção de câmera no dropdown
+        cameraSelect.addEventListener('change', () => {
+            const selectedCamera = parseInt(cameraSelect.value) || 0;
+            startCamera(selectedCamera);
         });
         
         // Capturar foto
@@ -180,31 +451,75 @@
             video.style.display = 'none';
             
             // Parar o streaming de vídeo
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
+            stopCamera();
             
             // Habilitar o botão de processamento
             processImageBtn.disabled = false;
+            resetImageBtn.disabled = false;
+            
+            // Guardar os dados da imagem original
+            originalImageData = photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height);
+            
+            // Configurar o canvas de desenho
+            canvas.width = photoCanvas.width;
+            canvas.height = photoCanvas.height;
+            ctx.putImageData(originalImageData, 0, 0);
+        });
+        
+        // Importar imagem da galeria
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // Dimensionar o canvas para a imagem
+                        photoCanvas.width = img.width;
+                        photoCanvas.height = img.height;
+                        
+                        // Desenhar a imagem no canvas
+                        photoCtx.drawImage(img, 0, 0);
+                        
+                        // Guardar os dados da imagem original
+                        originalImageData = photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height);
+                        
+                        // Configurar o canvas de desenho
+                        canvas.width = photoCanvas.width;
+                        canvas.height = photoCanvas.height;
+                        ctx.putImageData(originalImageData, 0, 0);
+                        
+                        // Habilitar botões
+                        processImageBtn.disabled = false;
+                        resetImageBtn.disabled = false;
+                    };
+                    img.src = event.target.result;
+                };
+                
+                reader.readAsDataURL(e.target.files[0]);
+            }
         });
         
         // Processar a imagem e criar desenho
         processImageBtn.addEventListener('click', () => {
-            // Configurar o canvas de desenho
-            canvas.width = photoCanvas.width;
-            canvas.height = photoCanvas.height;
-            
-            // Obter a imagem do canvas da foto
-            const imageData = photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height);
+            // Verificar se temos uma imagem para processar
+            if (!originalImageData) {
+                alert('Nenhuma imagem para processar. Capture uma foto ou importe da galeria.');
+                return;
+            }
             
             // Processar a imagem para criar um desenho
-            const processedImageData = processToDrawing(imageData);
+            const processedImageData = processToDrawing(originalImageData);
             
             // Mostrar o resultado no canvas
             ctx.putImageData(processedImageData, 0, 0);
-            
-            // Habilitar a captura de cliques para medição
-            canvas.addEventListener('click', handleCanvasClick);
+        });
+        
+        // Voltar para a imagem original
+        resetImageBtn.addEventListener('click', () => {
+            if (originalImageData) {
+                ctx.putImageData(originalImageData, 0, 0);
+            }
         });
         
         // Função para processar a imagem e transformar em desenho
@@ -230,7 +545,7 @@
                     // Converter para escala de cinza
                     const gray = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
                     
-                    // Detecção simples de borda (Sobel simplificado)
+                    // Detecção de borda (Sobel)
                     const gx = data[right] - data[left];
                     const gy = data[bottom] - data[top];
                     
@@ -238,7 +553,7 @@
                     const g = Math.sqrt(gx * gx + gy * gy);
                     
                     // Aplicar threshold para determinar se é uma borda
-                    if (g > 30) {
+                    if (g > 40) {
                         // Borda - desenhar em preto
                         processedData[idx] = 0;
                         processedData[idx + 1] = 0;
@@ -256,11 +571,14 @@
             return new ImageData(processedData, width, height);
         }
         
+        // Habilitar medição ao clicar no canvas
+        canvas.addEventListener('click', handleCanvasClick);
+        
         // Lidar com cliques no canvas para medição
         function handleCanvasClick(e) {
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
             
             // Criar um ponto onde o usuário clicou
             createPoint(x, y);
@@ -279,9 +597,49 @@
         function createPoint(x, y) {
             const point = document.createElement('div');
             point.className = 'point';
-            point.style.left = `${x}px`;
-            point.style.top = `${y}px`;
+            
+            // Converter coordenadas de canvas para tela
+            const rect = canvas.getBoundingClientRect();
+            const screenX = (x / canvas.width) * rect.width;
+            const screenY = (y / canvas.height) * rect.height;
+            
+            point.style.left = `${screenX}px`;
+            point.style.top = `${screenY}px`;
+            
             pointsContainer.appendChild(point);
+            return point;
+        }
+        
+        // Criar linha entre dois pontos
+        function createLine(point1, point2) {
+            const line = document.createElement('div');
+            line.className = 'line';
+            
+            // Converter coordenadas de canvas para tela
+            const rect = canvas.getBoundingClientRect();
+            const x1 = (point1.x / canvas.width) * rect.width;
+            const y1 = (point1.y / canvas.height) * rect.height;
+            const x2 = (point2.x / canvas.width) * rect.width;
+            const y2 = (point2.y / canvas.height) * rect.height;
+            
+            // Calcular a distância e o ângulo
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            
+            // Posicionar a linha
+            line.style.width = `${length}px`;
+            line.style.height = '2px';
+            line.style.backgroundColor = 'red';
+            line.style.position = 'absolute';
+            line.style.left = `${x1}px`;
+            line.style.top = `${y1}px`;
+            line.style.transformOrigin = '0 0';
+            line.style.transform = `rotate(${angle}deg)`;
+            
+            linesContainer.appendChild(line);
+            return line;
         }
         
         // Criar uma medição entre dois pontos
@@ -291,42 +649,73 @@
             const dy = point2.y - point1.y;
             const pixelDistance = Math.sqrt(dx * dx + dy * dy);
             
-            // Calcular a medida real se tivermos uma referência
-            let realDistance = pixelDistance;
-            if (referencePixels > 0 && referenceLength > 0) {
-                scale = referenceLength / referencePixels;
-                realDistance = pixelDistance * scale;
+            // Calcular distâncias nas diversas unidades
+            let measurementText = '';
+            
+            // Adicionar medida em pixels se estiver habilitada
+            if (showPixels.checked) {
+                measurementText += `${pixelDistance.toFixed(1)} px`;
             }
+            
+            // Calcular as medidas reais se tivermos uma referência
+            if (referencePixels > 0 && referenceLength > 0) {
+                // Calcular escala base (mm por pixel)
+                const baseUnit = referenceUnit.value;
+                scale = (referenceLength * unitConversions[baseUnit]) / referencePixels;
+                
+                // Distância em mm (unidade base)
+                const mmDistance = pixelDistance * scale;
+                
+                // Adicionar medidas nas unidades selecionadas
+                if (showMm.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${mmDistance.toFixed(1)} mm`;
+                }
+                
+                if (showCm.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${(mmDistance / 10).toFixed(2)} cm`;
+                }
+                
+                if (showM.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${(mmDistance / 1000).toFixed(3)} m`;
+                }
+                
+                if (showInch.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${(mmDistance / 25.4).toFixed(2)} pol`;
+                }
+            }
+            
+            // Desenhar linha no canvas
+            createLine(point1, point2);
             
             // Criar o elemento de medição
             const measurement = document.createElement('div');
             measurement.className = 'measurement';
             
+            // Converter coordenadas para espaço da tela
+            const rect = canvas.getBoundingClientRect();
+            const midX = ((point1.x + point2.x) / 2 / canvas.width) * rect.width;
+            const midY = ((point1.y + point2.y) / 2 / canvas.height) * rect.height;
+            
             // Posicionar no meio dos dois pontos
-            measurement.style.left = `${(point1.x + point2.x) / 2}px`;
-            measurement.style.top = `${(point1.y + point2.y) / 2}px`;
+            measurement.style.left = `${midX}px`;
+            measurement.style.top = `${midY}px`;
             
             // Mostrar a medida
-            measurement.textContent = referencePixels > 0 
-                ? `${realDistance.toFixed(1)} cm` 
-                : `${pixelDistance.toFixed(1)} px`;
+            measurement.textContent = measurementText;
             
             pointsContainer.appendChild(measurement);
-            
-            // Desenhar uma linha entre os pontos
-            ctx.beginPath();
-            ctx.moveTo(point1.x, point1.y);
-            ctx.lineTo(point2.x, point2.y);
-            ctx.strokeStyle = 'red';
-            ctx.lineWidth = 2;
-            ctx.stroke();
             
             // Guardar a medição
             measurements.push({
                 point1,
                 point2,
                 pixelDistance,
-                realDistance: referencePixels > 0 ? realDistance : null
+                realDistance: referencePixels > 0 ? pixelDistance * scale : null,
+                element: measurement
             });
         }
         
@@ -350,9 +739,6 @@
             referencePixels = Math.sqrt(dx * dx + dy * dy);
             referenceLength = referenceValue;
             
-            // Calcular escala
-            scale = referenceLength / referencePixels;
-            
             // Criar a medição de referência
             createMeasurement(selectedPoints[0], selectedPoints[1]);
             selectedPoints = [];
@@ -360,49 +746,78 @@
             // Atualizar todas as medições existentes
             updateAllMeasurements();
             
-            alert(`Referência definida: ${referenceValue} cm = ${referencePixels.toFixed(1)} pixels`);
+            const unit = referenceUnit.value;
+            alert(`Referência definida: ${referenceValue} ${unit} = ${referencePixels.toFixed(1)} pixels`);
         });
         
         // Atualizar todas as medições com a nova escala
         function updateAllMeasurements() {
-            // Atualizar os elementos DOM de medição
-            const measurementElements = document.querySelectorAll('.measurement');
-            measurementElements.forEach((element, index) => {
-                if (index < measurements.length) {
-                    const meas = measurements[index];
-                    meas.realDistance = meas.pixelDistance * scale;
-                    element.textContent = `${meas.realDistance.toFixed(1)} cm`;
+            // Calcular a nova escala
+            const baseUnit = referenceUnit.value;
+            scale = (referenceLength * unitConversions[baseUnit]) / referencePixels;
+            
+            // Atualizar cada medição
+            measurements.forEach(meas => {
+                // Calcular a distância em mm (unidade base)
+                const mmDistance = meas.pixelDistance * scale;
+                
+                // Montar o texto com as unidades selecionadas
+                let measurementText = '';
+                
+                if (showPixels.checked) {
+                    measurementText += `${meas.pixelDistance.toFixed(1)} px`;
                 }
+                
+                if (showMm.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${mmDistance.toFixed(1)} mm`;
+                }
+                
+                if (showCm.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${(mmDistance / 10).toFixed(2)} cm`;
+                }
+                
+                if (showM.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${(mmDistance / 1000).toFixed(3)} m`;
+                }
+                
+                if (showInch.checked) {
+                    if (measurementText) measurementText += ' | ';
+                    measurementText += `${(mmDistance / 25.4).toFixed(2)} pol`;
+                }
+                
+                // Atualizar o elemento DOM
+                meas.element.textContent = measurementText;
             });
         }
+        
+        // Event listeners para checkboxes de unidades
+        showPixels.addEventListener('change', updateAllMeasurements);
+        showMm.addEventListener('change', updateAllMeasurements);
+        showCm.addEventListener('change', updateAllMeasurements);
+        showM.addEventListener('change', updateAllMeasurements);
+        showInch.addEventListener('change', updateAllMeasurements);
         
         // Limpar todas as medições
         clearMeasurementsBtn.addEventListener('click', () => {
             // Limpar os pontos e medições visuais
             pointsContainer.innerHTML = '';
+            linesContainer.innerHTML = '';
             
             // Limpar as listas de pontos e medições
             selectedPoints = [];
             measurements = [];
-            
-            // Redesenhar a imagem sem as linhas de medição
-            ctx.putImageData(photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height), 0, 0);
-            const processedImageData = processToDrawing(photoCtx.getImageData(0, 0, photoCanvas.width, photoCanvas.height));
-            ctx.putImageData(processedImageData, 0, 0);
         });
         
         // Salvar o desenho com as medições
         saveDrawingBtn.addEventListener('click', () => {
-            // Criar um link temporário
-            const link = document.createElement('a');
-            link.download = 'desenho-com-medidas.png';
+            // Criar um canvas temporário que inclui as medições
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
             
-            // Converter o canvas para uma URL de dados
-            link.href = canvas.toDataURL('image/png');
-            
-            // Clicar no link para iniciar o download
-            link.click();
-        });
-    </script>
-</body>
-</html>
+            // Copiar o conteúdo do canvas principal
+            tempCtx
